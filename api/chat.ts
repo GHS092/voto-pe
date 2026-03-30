@@ -4,22 +4,7 @@ export const config = {
   runtime: 'edge',
 };
 
-const API_KEYS = [
-  "AIzaSyDjtH5Ez2DB_xkthx8eE59Rpnvjkr-pt5k",
-  "AIzaSyB1V9jurbTJIRLxqsIrlFxAUCuHD-CzuXM",
-  "AIzaSyBe2kINUnlD52qmcdZbd9NdLeZt_23rMLU",
-  "AIzaSyDZpwLHcFZgo3Hr8BXmxaFgYjFMj8b0Jpg",
-  "AIzaSyCc5pNbLwAOTooUYw9bfOXpag88tcrD4oI",
-  "AIzaSyC4vW16461QR4rIYuQCIBsRSbxuF7MOxAk",
-  "AIzaSyDD6VcVHQcrOr5CZ6sy3Ug_ZkHB4uEqEcs",
-  "AIzaSyBFBu4XBmbTcl5655FlCwWfhqnPj4_rKCk",
-  "AIzaSyAGAxXI6TZ3TbmnLA2mWzUkryzhlBI_6V8",
-  "AIzaSyB0ri7vt7ph_cyjBf3ZwdCYKjaYCDwcc4M",
-  "AIzaSyDb3uAbRoLsReVNAKRuqP9HczFbRQv_pLE",
-  "AIzaSyCInKoHFosi2gJT-vCGkwCy81Fi-OFiHjo",
-  "AIzaSyCPoq7JC6YHrw69Edmmx738emvV4SMQOdk",
-  "AIzaSyDHnGUzJPXprVAqF3MduXQ-eVH61LhEIvo"
-];
+// Aquí iban las llaves. Han sido eliminadas por seguridad.
 
 const FRIENDLY_ERROR = "El sistema central está experimentando una alta demanda o una interferencia externa. Estamos recalibrando nuestras bases de datos. Por favor, intenta de nuevo en un momento.";
 
@@ -92,7 +77,11 @@ export default async function handler(req: Request) {
 
     // Prefer environment variables securely stored in Vercel if available
     const keysStr = process.env.GEMINI_API_KEYS;
-    const keys = keysStr ? keysStr.split(',').map(k => k.trim()).filter(Boolean) : API_KEYS;
+    const keys = keysStr ? keysStr.split(',').map(k => k.trim()).filter(Boolean) : [];
+    
+    if (keys.length === 0) {
+      return new Response(JSON.stringify({ text: "Error: No se han configurado las API Keys en el servidor." }), { status: 500, headers: corsHeaders });
+    }
     
     const maxRetries = keys.length * 2;
     let attempts = 0;
