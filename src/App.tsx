@@ -14,17 +14,22 @@ export interface ChatSession {
 }
 
 export default function App() {
+  const [accessCode, setAccessCode] = useState(() => localStorage.getItem('voto-informado-access-code') || '');
+  const [tempCodeInput, setTempCodeInput] = useState('');
+
+  const submitAccessCode = () => {
+    if (tempCodeInput.trim().toUpperCase().startsWith('GHS') && tempCodeInput.trim().length >= 7) {
+      const code = tempCodeInput.trim().toUpperCase();
+      setAccessCode(code);
+      localStorage.setItem('voto-informado-access-code', code);
+    } else {
+      alert("Código inválido. Asegúrate de digitarlo correctamente (Ej: GHS1129)");
+    }
+  };
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     const saved = localStorage.getItem('voto-informado-sessions');
     if (saved) return JSON.parse(saved);
-    
-    const oldSaved = localStorage.getItem('voto-informado-chat');
-    if (oldSaved) {
-      const oldMsgs = JSON.parse(oldSaved);
-      if (oldMsgs && oldMsgs.length > 0) {
-        return [{ id: Date.now().toString(), title: oldMsgs[0].content.substring(0, 30) + '...', messages: oldMsgs, updatedAt: Date.now(), isPinned: false }];
-      }
-    }
     return [];
   });
   
@@ -66,7 +71,6 @@ export default function App() {
   const loadVoices = async (isRetry = false) => {
     try {
       if (!isRetry) {
-        // En Android (especialmente Xiaomi/MIUI), el motor TTS toma tiempo en iniciar.
         await new Promise(resolve => setTimeout(resolve, 1500));
       } else {
         setVoicesError(null);
@@ -163,7 +167,6 @@ export default function App() {
     ));
 
     try {
-      // Tomamos el historial de la sesión actual (antes de que se añada el nuevo mensaje al state)
       const sessionForHistory = sessions.find(s => s.id === sessionId);
       const historyToPass = sessionForHistory ? sessionForHistory.messages.filter(m => !m.isStreaming && m.content) : [];
 
@@ -190,15 +193,22 @@ export default function App() {
           : s
       ));
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
+      
+      // Manejar el caso de bloqueo por el backend para que limpie el código si fue bloqueado
+      if (error?.message?.includes("expulsado") || error?.message?.includes("bloqueado")) {
+        setAccessCode('');
+        localStorage.removeItem('voto-informado-access-code');
+      }
+
       setSessions((prev) => prev.map(s => 
         s.id === sessionId 
           ? { 
               ...s, 
               messages: [
                 ...s.messages.filter(msg => msg.id !== assistantMessageId),
-                { id: assistantMessageId, role: 'assistant', content: 'Lo siento, ha ocurrido un error al procesar tu solicitud. Por favor, intenta de nuevo.' }
+                { id: assistantMessageId, role: 'assistant', content: 'Lo siento, tu código de acceso fue rechazado o bloqueado. Por favor, verifica en pantalla.' }
               ]
             }
           : s
@@ -246,7 +256,6 @@ export default function App() {
     setIsSidebarOpen(false);
   };
 
-  // Sort sessions: pinned first, then by updatedAt
   const sortedSessions = [...sessions].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
@@ -256,7 +265,37 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans relative overflow-hidden">
       
+      {/* ACCESS CODE OVERLAY */}
+      {!accessCode && (
+        <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl px-4">
+          <div className="bg-white rounded-3xl p-8 shadow-2xl w-full max-w-sm text-center transform transition-all animate-in fade-in zoom-in-95 border border-slate-200/20">
+            <div className="bg-red-50 text-red-600 p-5 rounded-full inline-flex mb-6 shadow-sm ring-1 ring-red-100">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+            </div>
+            <h2 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">Acceso Premium</h2>
+            <p className="text-sm text-slate-500 mb-8 px-2 font-medium">Esta aplicación opera en servidores dedicados. Ingresa tu código de invitación para continuar.</p>
+            <input 
+              type="text" 
+              placeholder="Ej: GHS1129" 
+              value={tempCodeInput}
+              onChange={(e) => setTempCodeInput(e.target.value.toUpperCase().trim())}
+              onKeyDown={(e) => e.key === 'Enter' && submitAccessCode()}
+              className="w-full text-center text-xl font-mono font-bold tracking-[0.2em] p-4 border-2 border-slate-200 focus:border-red-500 rounded-xl outline-none mb-4 transition-colors text-slate-800 bg-slate-50 placeholder:text-slate-300"
+              maxLength={10}
+            />
+            <button 
+              onClick={submitAccessCode}
+              className="w-full bg-slate-900 hover:bg-black text-white px-6 py-4 rounded-xl transition shadow-lg shadow-slate-900/20 font-bold tracking-wide uppercase text-sm flex items-center justify-center gap-2"
+            >
+              Cargar Módulo IA
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Overlay */}
+
       {isSidebarOpen && (
         <div 
           className="absolute inset-0 bg-black/50 z-40 transition-opacity"

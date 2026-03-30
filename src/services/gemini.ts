@@ -11,12 +11,8 @@ class PoliticalChatService {
   }
 
   async *sendMessageStream(params: { message: string, history?: any[] }) {
-    // Generar un ID fantasma para controlar el uso (una sola vez por celular)
-    let deviceId = localStorage.getItem('voto_informado_device_id');
-    if (!deviceId) {
-      deviceId = 'device_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-      localStorage.setItem('voto_informado_device_id', deviceId);
-    }
+    // 1. Obtener el Access Code
+    let accessCode = localStorage.getItem('voto-informado-access-code') || '';
 
     try {
       const response = await fetch(API_URL, {
@@ -29,7 +25,7 @@ class PoliticalChatService {
           message: params.message,
           history: params.history,
           isDebateMode: this.isDebateMode,
-          deviceId: deviceId // <--- Enviamos el ID mudo al servidor
+          accessCode: accessCode // Enviamos explícitamente el código para que Vercel/Redis lo chequee
         })
       });
 

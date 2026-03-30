@@ -163,7 +163,7 @@ export default async function handler(req: Request) {
       </div>
 
       <!-- PANTALLA DASHBOARD -->
-      <div class="container hidden" id="dashboard-screen">
+      <div class="container hidden" id="dashboard-screen" style="max-width: 600px;">
         <div class="header">
           <h1>Voto Informado Admin</h1>
           <div id="status-badge" class="status-badge">
@@ -171,15 +171,21 @@ export default async function handler(req: Request) {
           </div>
         </div>
         
-        <div class="metric-grid">
+        <div class="metric-grid" style="grid-template-columns: 1fr 1fr;">
           <div class="metric-card">
-            <div class="metric-label">Tráfico de IA (Hoy)</div>
+            <div class="metric-label">Tráfico Global Hoy</div>
             <div class="metric-value" id="queries-today">0</div>
-            <div class="subtitle" style="margin-top: 10px; font-size: 0.75rem; color: #3b82f6;">PETICIONES REGISTRADAS</div>
+          </div>
+          <div class="metric-card" style="display:flex; flex-direction:column; justify-content:center;">
+             <button id="toggle-btn" class="btn-danger" onclick="toggleStandby()" style="margin-bottom:0;">🛑 APAGADO NACIONAL</button>
           </div>
         </div>
 
-        <button id="toggle-btn" class="btn-danger" onclick="toggleStandby()" style="margin-bottom: 12px;">Desconocido...</button>
+        <h3 style="margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px;">Gestión de VIP Codes</h3>
+        <div id="codes-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+          <!-- Se llena por JS -->
+        </div>
+
         <button class="btn-primary" style="background: rgba(255,255,255,0.05); box-shadow: none; border: 1px solid rgba(255,255,255,0.1);" onclick="refreshStats()">
           🔄 Sincronizar Datos
         </button>
@@ -242,18 +248,56 @@ export default async function handler(req: Request) {
               badge.className = 'status-badge standby';
               statusTxt.innerText = 'SISTEMA PAUSADO (STANDBY)';
             } else {
-              btn.innerText = '🛑 APAGADO DE EMERGENCIA (STANDBY)';
+              btn.innerText = '🛑 APAGADO NACIONAL';
               btn.className = 'btn-danger';
               badge.className = 'status-badge';
               statusTxt.innerText = 'SISTEMA EN LÍNEA';
             }
+
+            renderCodes(res.codes);
           }
+        }
+
+        function renderCodes(codes) {
+          const container = document.getElementById('codes-list');
+          container.innerHTML = '';
+          codes.forEach(c => {
+            const isBlocked = c.status === 'bloqueado';
+            container.innerHTML += \`
+              <div style="background: rgba(0,0,0,0.3); border-radius:12px; padding:15px; display:flex; justify-content:space-between; align-items:center; border: 1px solid \${isBlocked ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)'}">
+                <div>
+                  <div style="font-weight:bold; font-size:1.1rem; color: \${isBlocked ? 'var(--accent)' : 'white'}">\${c.code}</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Uso de hoy: <strong style="color:var(--text-main)">\${c.usage}</strong> / \${c.limit}</div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button onclick="updateLimit('\${c.code}', \${c.limit})" style="padding:6px 12px; font-size:0.8rem; width:auto; background:rgba(255,255,255,0.1)">⚙️ Límite</button>
+                  <button onclick="toggleCodeStatus('\${c.code}', '\${c.status}')" style="padding:6px 12px; font-size:0.8rem; width:auto; \${isBlocked ? 'background:var(--success)' : 'background:var(--accent)'}">
+                    \${isBlocked ? '✅ Reactivar' : '🚫 Bloquear'}
+                  </button>
+                </div>
+              </div>
+            \`;
+          });
+        }
+
+        async function updateLimit(code, currentLimit) {
+          const newLimit = prompt(\`Nuevo límite diario para \${code}:\`, currentLimit);
+          if (newLimit && !isNaN(newLimit)) {
+            const res = await apiCall('update_code', { code, limit: parseInt(newLimit) });
+            if(res.success) refreshStats();
+          }
+        }
+
+        async function toggleCodeStatus(code, currentStatus) {
+          const newStatus = currentStatus === 'activo' ? 'bloqueado' : 'activo';
+          const res = await apiCall('update_code', { code, status: newStatus });
+          if(res.success) refreshStats();
         }
 
         async function toggleStandby() {
           const btn = document.getElementById('toggle-btn');
           const isCurrentlyStandby = btn.innerText.includes('REACTIVAR');
-          btn.innerText = 'Ejecutando Orden...';
+          btn.innerText = 'Ejecutando...';
           
           const res = await apiCall('toggle_standby', { newState: !isCurrentlyStandby });
           if (res.success) {
@@ -283,6 +327,8 @@ export default async function handler(req: Request) {
         return new Response(JSON.stringify({ success: false, error: 'Redis no detectado' }), { status: 500 });
       }
 
+      const VALID_CODES = ['GHS1129', 'GHS2129', 'GHS3129', 'GHS4129', 'GHS5129'];
+
       if (body.action === 'login') {
         return new Response(JSON.stringify({ success: true }));
       }
@@ -291,13 +337,42 @@ export default async function handler(req: Request) {
         const today = new Date().toISOString().split('T')[0];
         const globalKey = `usage:global:${today}`;
         const todayUsage = await redis.get(globalKey);
-        
         const redisStandby = await redis.get('APP_STANDBY_MODE');
+
+        const codesData = [];
+        for (const code of VALID_CODES) {
+          let config: any = await redis.get(`config:${code}`);
+          if (!config) config = { status: 'activo', limit: 20 };
+          const usage: any = await redis.get(`usage:${code}:${today}`);
+          
+          codesData.push({
+            code,
+            status: config.status,
+            limit: config.limit,
+            usage: usage || 0
+          });
+        }
+        
         return new Response(JSON.stringify({ 
           success: true, 
           todayUsage: todayUsage || 0,
-          isStandby: redisStandby === 'true' || redisStandby === true
+          isStandby: redisStandby === 'true' || redisStandby === true,
+          codes: codesData
         }));
+      }
+
+      if (body.action === 'update_code') {
+        const { code, limit, status } = body;
+        if (!VALID_CODES.includes(code)) return new Response(JSON.stringify({ success: false }));
+        
+        let config: any = await redis.get(`config:${code}`);
+        if (!config) config = { status: 'activo', limit: 20 };
+        
+        if (limit !== undefined) config.limit = limit;
+        if (status !== undefined) config.status = status;
+        
+        await redis.set(`config:${code}`, config);
+        return new Response(JSON.stringify({ success: true }));
       }
 
       if (body.action === 'toggle_standby') {

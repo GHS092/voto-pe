@@ -67,49 +67,15 @@ export default async function handler(req: Request) {
   }
 
   try {
-    const { message, history, isDebateMode, deviceId } = await req.json();
+    const { message, history, isDebateMode, accessCode } = await req.json();
 
     // === MODO STANDBY / PAUSA MAGISTRAL DE VERCEL ===
     let isStandby = process.env.APP_STANDBY === 'true';
 
-    // === CONTROL DE LÍMITES Y APAGADO VÍA REDIS ===
     if (redis) {
-      // 1. Apagado maestro desde el panel de Redis
       const redisStandby = await redis.get('APP_STANDBY_MODE');
       if (redisStandby === 'true' || redisStandby === true) {
         isStandby = true;
-      }
-
-      // 2. Control de Uso Diario por Usuario
-      if (deviceId && !isStandby) {
-        const today = new Date().toISOString().split('T')[0];
-        const userKey = `usage:${deviceId}:${today}`;
-        
-        // Sumar 1 al uso del usuario.
-        // `incr` crea la llave en 1 si no existía.
-        const userUsage = await redis.incr(userKey);
-        
-        if (userUsage === 1) {
-          // Si es la primera vez que ocurre hoy, la llave expira en 24h para limpieza.
-          await redis.expire(userKey, 60 * 60 * 24);
-        }
-
-        // Si pasó el límite (ej. 20 mensajes al día)
-        if (userUsage > 20) {
-          const encoder = new TextEncoder();
-          const stream = new ReadableStream({
-            start(controller) {
-              controller.enqueue(encoder.encode(JSON.stringify({ 
-                text: "\\n\\n 🛑 **LÍMITE DIARIO ALCANZADO** 🛑\\n\\nHas superado tu límite de límite de consultas políticas por el día de hoy. Esto nos permite mantener los servidores estables y rápidos para todos. ¡Por favor, vuelve mañana!" 
-              }) + '\n'));
-              controller.close();
-            }
-          });
-          return new Response(stream, { headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
-        }
-
-        // 3. Contador Estadístico Global
-        await redis.incr(`usage:global:${today}`);
       }
     }
 
@@ -125,6 +91,59 @@ export default async function handler(req: Request) {
       });
       return new Response(stream, { headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
     }
+
+    // === VALIDACIÓN DE CÓDIGOS BETA / PREMIUM ===
+    const VALID_CODES = ['GHS1129', 'GHS2129', 'GHS3129', 'GHS4129', 'GHS5129'];
+    
+    if (!accessCode || !VALID_CODES.includes(accessCode.toUpperCase())) {
+      throw new Error("Código de acceso expulsado o inválido.");
+    }
+
+    const currentCode = accessCode.toUpperCase();
+
+    // === CONTROL DE LÍMITES Y APAGADO VÍA REDIS ===
+    if (redis) {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // 1. Obtener configuración del código { status: 'activo', limit: 20 }
+      let codeConfig: any = await redis.get(`config:${currentCode}`);
+      if (!codeConfig) {
+        codeConfig = { status: 'activo', limit: 20 };
+        await redis.set(`config:${currentCode}`, codeConfig);
+      }
+
+      // 2. Comprobar si está bloqueado individualmente
+      if (codeConfig.status === 'bloqueado') {
+        throw new Error("Su cuenta GHS ha sido expulsado temporal o permanentemente por el administrador.");
+      }
+
+      // 3. Control de Uso Diario por Código
+      const usageKey = `usage:${currentCode}:${today}`;
+      const userUsage = await redis.incr(usageKey);
+      
+      if (userUsage === 1) {
+        await redis.expire(usageKey, 60 * 60 * 24);
+      }
+
+      const limit = codeConfig.limit || 20;
+
+      if (userUsage > limit) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(JSON.stringify({ 
+              text: "\\n\\n 🛑 **LÍMITE DIARIO ALCANZADO** 🛑\\n\\nEl código (" + currentCode + ") ha agotado el pozo de " + limit + " peticiones diarias. Válido de nuevo mañana." 
+            }) + '\n'));
+            controller.close();
+          }
+        });
+        return new Response(stream, { headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
+      }
+
+      // 4. Contador Estadístico Global
+      await redis.incr(`usage:global:${today}`);
+    }
+    // ======================================
     // ======================================
 
     // Prefer environment variables securely stored in Vercel if available
