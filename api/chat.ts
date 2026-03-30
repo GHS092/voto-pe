@@ -102,6 +102,7 @@ export default async function handler(req: Request) {
     
     const stream = new ReadableStream({
       async start(controller) {
+        let lastErrorMsg = "";
         while (attempts < maxRetries) {
           try {
             const genAI = new GoogleGenAI({ apiKey: keys[globalKeyIndex % keys.length] });
@@ -130,13 +131,14 @@ export default async function handler(req: Request) {
             return;
           } catch (error: any) {
             console.error(`Error on key index ${globalKeyIndex % keys.length}:`, error.message);
+            lastErrorMsg = error.message;
             globalKeyIndex++;
             attempts++;
             await new Promise(r => setTimeout(r, 800));
           }
         }
         
-        controller.enqueue(encoder.encode(JSON.stringify({ text: FRIENDLY_ERROR }) + '\n'));
+        controller.enqueue(encoder.encode(JSON.stringify({ text: FRIENDLY_ERROR + "\n\n**[🛠️ LOG TÉCNICO INTERNO DEL BACKEND]:** " + lastErrorMsg }) + '\n'));
         controller.close();
       }
     });
