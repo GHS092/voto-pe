@@ -1,7 +1,7 @@
 // Archivo transformado para actuar solo como CLIENTE
 // La lógica compleja y las API Keys ahora viven protegidas en /api/chat.ts de Vercel.
 
-const API_URL = (import.meta as any).env.VITE_API_URL || '/api/chat';
+const API_URL = 'https://voto-peru.vercel.app/api/chat';
 
 class PoliticalChatService {
   private isDebateMode: boolean = false;
@@ -11,6 +11,13 @@ class PoliticalChatService {
   }
 
   async *sendMessageStream(params: { message: string, history?: any[] }) {
+    // Generar un ID fantasma para controlar el uso (una sola vez por celular)
+    let deviceId = localStorage.getItem('voto_informado_device_id');
+    if (!deviceId) {
+      deviceId = 'device_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      localStorage.setItem('voto_informado_device_id', deviceId);
+    }
+
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
@@ -21,7 +28,8 @@ class PoliticalChatService {
         body: JSON.stringify({
           message: params.message,
           history: params.history,
-          isDebateMode: this.isDebateMode
+          isDebateMode: this.isDebateMode,
+          deviceId: deviceId // <--- Enviamos el ID mudo al servidor
         })
       });
 

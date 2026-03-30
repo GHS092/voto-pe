@@ -1,8 +1,18 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { Redis } from '@upstash/redis';
 
 export const config = {
   runtime: 'edge',
 };
+
+// Inicializamos Redis SOLO si las variables están configuradas en Vercel
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
+
 
 // Aquí iban las llaves. Han sido eliminadas por seguridad.
 
@@ -57,11 +67,53 @@ export default async function handler(req: Request) {
   }
 
   try {
-    const { message, history, isDebateMode } = await req.json();
+    const { message, history, isDebateMode, deviceId } = await req.json();
 
-    // === MODO STANDBY / PAUSA MAGISTRAL ===
-    // Si configuras APP_STANDBY="true" en Variables de Entorno de Vercel, la app se pausa al instante.
-    if (process.env.APP_STANDBY === 'true') {
+    // === MODO STANDBY / PAUSA MAGISTRAL DE VERCEL ===
+    let isStandby = process.env.APP_STANDBY === 'true';
+
+    // === CONTROL DE LÍMITES Y APAGADO VÍA REDIS ===
+    if (redis) {
+      // 1. Apagado maestro desde el panel de Redis
+      const redisStandby = await redis.get('APP_STANDBY_MODE');
+      if (redisStandby === 'true' || redisStandby === true) {
+        isStandby = true;
+      }
+
+      // 2. Control de Uso Diario por Usuario
+      if (deviceId && !isStandby) {
+        const today = new Date().toISOString().split('T')[0];
+        const userKey = `usage:${deviceId}:${today}`;
+        
+        // Sumar 1 al uso del usuario.
+        // `incr` crea la llave en 1 si no existía.
+        const userUsage = await redis.incr(userKey);
+        
+        if (userUsage === 1) {
+          // Si es la primera vez que ocurre hoy, la llave expira en 24h para limpieza.
+          await redis.expire(userKey, 60 * 60 * 24);
+        }
+
+        // Si pasó el límite (ej. 20 mensajes al día)
+        if (userUsage > 20) {
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(JSON.stringify({ 
+                text: "\\n\\n 🛑 **LÍMITE DIARIO ALCANZADO** 🛑\\n\\nHas superado tu límite de límite de consultas políticas por el día de hoy. Esto nos permite mantener los servidores estables y rápidos para todos. ¡Por favor, vuelve mañana!" 
+              }) + '\n'));
+              controller.close();
+            }
+          });
+          return new Response(stream, { headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
+        }
+
+        // 3. Contador Estadístico Global
+        await redis.incr(`usage:global:${today}`);
+      }
+    }
+
+    if (isStandby) {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
