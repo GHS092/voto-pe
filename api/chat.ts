@@ -74,6 +74,22 @@ export default async function handler(req: Request) {
   try {
     const { message, history, isDebateMode } = await req.json();
 
+    // === MODO STANDBY / PAUSA MAGISTRAL ===
+    // Si configuras APP_STANDBY="true" en Variables de Entorno de Vercel, la app se pausa al instante.
+    if (process.env.APP_STANDBY === 'true') {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({ 
+            text: "\\n\\n 🛑 **SISTEMA EN MANTENIMIENTO** 🛑\\n\\nLa aplicación se encuentra temporalmente en pausa por el administrador para una actualización de datos o control de servidores. Por favor, intenta más tarde." 
+          }) + '\n'));
+          controller.close();
+        }
+      });
+      return new Response(stream, { headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson; charset=utf-8' } });
+    }
+    // ======================================
+
     // Prefer environment variables securely stored in Vercel if available
     const keysStr = process.env.GEMINI_API_KEYS;
     const keys = keysStr ? keysStr.split(',').map(k => k.trim()).filter(Boolean) : API_KEYS;
