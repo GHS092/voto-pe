@@ -24,60 +24,200 @@ export default async function handler(req: Request) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Panel de Control - Voto Informado</title>
+      <title>Centro de Mando | Voto Informado</title>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
       <style>
-        body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; color: #111827; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); max-width: 400px; width: 100%; }
-        h1 { font-size: 1.5rem; text-align: center; color: #b91c1c; margin-top: 0; }
-        .stat-card { background: #fee2e2; border-left: 4px solid #b91c1c; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; }
-        .stat-value { font-size: 2rem; font-weight: bold; }
-        .stat-label { font-size: 0.875rem; color: #4b5563; }
-        input { width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; margin-bottom: 1rem; }
-        button { width: 100%; background: #b91c1c; color: white; border: none; padding: 0.75rem; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-bottom: 0.5rem; }
-        button:hover { background: #991b1b; }
-        button.standby-on { background: #ea580c; }
-        button.standby-on:hover { background: #c2410c; }
-        .hidden { display: none; }
-        #toast { text-align: center; margin-top: 1rem; font-weight: 500; font-size: 0.9rem; }
+        :root {
+          --bg-dark: #0f172a;
+          --panel-bg: rgba(30, 41, 59, 0.7);
+          --accent: #ef4444;
+          --accent-hover: #dc2626;
+          --text-main: #f8fafc;
+          --text-muted: #94a3b8;
+          --success: #10b981;
+          --warning: #f59e0b;
+        }
+
+        body { 
+          font-family: 'Outfit', sans-serif; 
+          background: radial-gradient(circle at top right, #1e1b4b, var(--bg-dark), #000); 
+          color: var(--text-main); 
+          display: flex; justify-content: center; align-items: center; 
+          min-height: 100vh; margin: 0; 
+          overflow: hidden;
+        }
+
+        /* Ambient Background Glows */
+        .glow-1 { position: absolute; width: 300px; height: 300px; background: rgba(239, 68, 68, 0.2); filter: blur(100px); top: -100px; left: -100px; border-radius: 50%; z-index: -1; }
+        .glow-2 { position: absolute; width: 400px; height: 400px; background: rgba(59, 130, 246, 0.15); filter: blur(120px); bottom: -150px; right: -100px; border-radius: 50%; z-index: -1; }
+
+        .container { 
+          background: var(--panel-bg); 
+          backdrop-filter: blur(16px); 
+          -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 2.5rem; 
+          border-radius: 24px; 
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); 
+          max-width: 480px; 
+          width: 90%;
+          transition: all 0.4s ease;
+          animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          opacity: 0; transform: translateY(30px);
+        }
+
+        @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+        .header { text-align: center; margin-bottom: 2rem; }
+        h1 { font-size: 2rem; font-weight: 800; margin: 0; background: linear-gradient(to right, #ffffff, #94a3b8); -webkit-background-clip: text; color: transparent; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 5px; }
+
+        .metric-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+        .metric-card { 
+          background: rgba(15, 23, 42, 0.6); 
+          border: 1px solid rgba(255, 255, 255, 0.05); 
+          padding: 1.5rem; 
+          border-radius: 16px; 
+          position: relative;
+          overflow: hidden;
+        }
+        .metric-card::before {
+          content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+          background: linear-gradient(to bottom, #3b82f6, #8b5cf6);
+        }
+
+        .metric-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        .metric-value { font-size: 3rem; font-weight: 800; line-height: 1.1; margin-top: 0.5rem; text-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+
+        .status-badge {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2);
+          color: var(--success); padding: 6px 14px; border-radius: 20px;
+          font-size: 0.85rem; font-weight: 600; margin-top: 10px;
+        }
+        .status-badge.standby { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: var(--accent); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+        .standby .status-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        input { 
+          width: 100%; padding: 1rem; 
+          background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); 
+          color: white; border-radius: 12px; font-family: 'Outfit'; font-size: 1rem;
+          box-sizing: border-box; margin-bottom: 1rem; transition: border 0.3s;
+        }
+        input:focus { outline: none; border-color: #3b82f6; }
+
+        button { 
+          width: 100%; 
+          padding: 1.1rem; 
+          border: none; border-radius: 12px; 
+          font-family: 'Outfit'; font-weight: 600; font-size: 1rem; letter-spacing: 0.5px;
+          cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          color: white; display: flex; justify-content: center; align-items: center; gap: 10px;
+        }
+        
+        .btn-primary { 
+          background: linear-gradient(135deg, #3b82f6, #2563eb); 
+          box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(37, 99, 235, 0.5); }
+
+        .btn-danger {
+          background: linear-gradient(135deg, #ef4444, #b91c1c);
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+        .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(239, 68, 68, 0.5); }
+
+        .btn-success {
+          background: linear-gradient(135deg, #10b981, #059669);
+          box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+        .btn-success:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16, 185, 129, 0.5); }
+
+        .hidden { display: none !important; }
+        
+        .toast {
+          position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px);
+          background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255,255,255,0.1);
+          padding: 12px 24px; border-radius: 30px; font-size: 0.9rem; font-weight: 600;
+          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); z-index: 1000;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
       </style>
     </head>
     <body>
+      <div class="glow-1"></div>
+      <div class="glow-2"></div>
+
+      <!-- PANTALLA DE LOGIN -->
       <div class="container" id="login-screen">
-        <h1>Centro de Comando</h1>
-        <p style="text-align:center; font-size:0.9rem; color:#4b5563">Ingresa la clave maestra para continuar</p>
-        <input type="password" id="password" placeholder="Contraseña">
-        <button onclick="login()">Ingresar</button>
-        <div id="login-error" style="color:red; text-align:center; display:none; margin-top:10px;">Contraseña incorrecta</div>
+        <div class="header">
+          <h1>Sistema Central</h1>
+          <div class="subtitle">Acceso Restringido Nivel 1</div>
+        </div>
+        <input type="password" id="password" placeholder="Clave de encriptación..." onkeypress="if(event.key === 'Enter') login()">
+        <button class="btn-primary" onclick="login()">Desbloquear Panel</button>
+        <div id="login-error" style="color:var(--accent); text-align:center; display:none; margin-top:15px; font-size: 0.9rem;">Credenciales rechazadas</div>
       </div>
 
+      <!-- PANTALLA DASHBOARD -->
       <div class="container hidden" id="dashboard-screen">
-        <h1>Voto Informado - Admin</h1>
+        <div class="header">
+          <h1>Voto Informado Admin</h1>
+          <div id="status-badge" class="status-badge">
+            <div class="status-dot"></div> <span id="status-text">Sistema En Línea</span>
+          </div>
+        </div>
         
-        <div class="stat-card">
-          <div class="stat-label">Consultas de IA Hoy</div>
-          <div class="stat-value" id="queries-today">0</div>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Tráfico de IA (Hoy)</div>
+            <div class="metric-value" id="queries-today">0</div>
+            <div class="subtitle" style="margin-top: 10px; font-size: 0.75rem; color: #3b82f6;">PETICIONES REGISTRADAS</div>
+          </div>
         </div>
 
-        <button id="toggle-btn" onclick="toggleStandby()">Cargando estado...</button>
-        <button onclick="refreshStats()" style="background:#4b5563; margin-top:10px;">Refrescar Datos</button>
-        
-        <div id="toast"></div>
+        <button id="toggle-btn" class="btn-danger" onclick="toggleStandby()" style="margin-bottom: 12px;">Desconocido...</button>
+        <button class="btn-primary" style="background: rgba(255,255,255,0.05); box-shadow: none; border: 1px solid rgba(255,255,255,0.1);" onclick="refreshStats()">
+          🔄 Sincronizar Datos
+        </button>
       </div>
+
+      <div class="toast" id="toast">Acción completada con éxito.</div>
 
       <script>
         let currentPassword = '';
+        
+        function showToast(msg, color = 'white') {
+          const t = document.getElementById('toast');
+          t.innerText = msg;
+          t.style.color = color;
+          t.classList.add('show');
+          setTimeout(() => t.classList.remove('show'), 3500);
+        }
+
         async function apiCall(action, data = {}) {
-          const res = await fetch('/api/admin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, password: currentPassword, ...data })
-          });
-          return await res.json();
+          try {
+            const res = await fetch('/api/admin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action, password: currentPassword, ...data })
+            });
+            return await res.json();
+          } catch(e) {
+            return { success: false, error: 'Network Error' };
+          }
         }
 
         async function login() {
+          const btn = document.querySelector('#login-screen button');
+          btn.innerText = 'Verificando...';
           currentPassword = document.getElementById('password').value;
           const res = await apiCall('login');
+          btn.innerText = 'Desbloquear Panel';
+          
           if (res.success) {
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('dashboard-screen').classList.remove('hidden');
@@ -91,27 +231,36 @@ export default async function handler(req: Request) {
           const res = await apiCall('stats');
           if (res.success) {
             document.getElementById('queries-today').innerText = res.todayUsage || '0';
+            
             const btn = document.getElementById('toggle-btn');
+            const badge = document.getElementById('status-badge');
+            const statusTxt = document.getElementById('status-text');
+
             if (res.isStandby) {
-              btn.innerText = '🔴 ReActivar Aplicación';
-              btn.className = 'standby-on';
+              btn.innerText = '⚡ REACTIVAR SISTEMA';
+              btn.className = 'btn-success';
+              badge.className = 'status-badge standby';
+              statusTxt.innerText = 'SISTEMA PAUSADO (STANDBY)';
             } else {
-              btn.innerText = '🟢 Poner en Pausa (Standby)';
-              btn.className = '';
+              btn.innerText = '🛑 APAGADO DE EMERGENCIA (STANDBY)';
+              btn.className = 'btn-danger';
+              badge.className = 'status-badge';
+              statusTxt.innerText = 'SISTEMA EN LÍNEA';
             }
           }
         }
 
         async function toggleStandby() {
           const btn = document.getElementById('toggle-btn');
-          const isCurrentlyStandby = btn.innerText.includes('Activar');
-          btn.innerText = 'Procesando...';
+          const isCurrentlyStandby = btn.innerText.includes('REACTIVAR');
+          btn.innerText = 'Ejecutando Orden...';
+          
           const res = await apiCall('toggle_standby', { newState: !isCurrentlyStandby });
           if (res.success) {
-            const toast = document.getElementById('toast');
-            toast.innerText = !isCurrentlyStandby ? '¡Aplicación apagada nacionalmente!' : '¡Aplicación reactivada!';
-            toast.style.color = !isCurrentlyStandby ? '#ea580c' : 'green';
-            setTimeout(() => toast.innerText='', 3000);
+            showToast(!isCurrentlyStandby ? '¡APAGADO NACIONAL EJECUTADO!' : '¡SISTEMA REACTIVADO CON ÉXITO!', !isCurrentlyStandby ? '#ef4444' : '#10b981');
+            refreshStats();
+          } else {
+            showToast('Error de conexión', '#ef4444');
             refreshStats();
           }
         }
